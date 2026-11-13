@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#f4f7f6">
+<meta name="description" content="Поиск аналогов запчастей по модели или артикулу. Компрессоры, вентиляторы и подбор ТЭНов.">
+<title>Аналоги запчастей — поиск по каталогу</title>
+<link rel="stylesheet" href="./assets/site.css">
+<script defer src="./assets/vendor/jszip.min.js"></script><script type="module" src="./assets/app.js"></script>
+</head>
+<body>
+<header class="shell topbar"><a class="brand" href="./" aria-label="Аналоги запчастей, главная"><span class="mark" aria-hidden="true">↗</span><span>Аналоги запчастей<small>Каталог оборудования</small></span></a><span class="top-note">Поиск по модели и артикулу</span></header>
+<main class="shell">
+<section class="intro"><div class="eyebrow"><span class="dot"></span>Подбор по каталогу</div><h1>Найдите аналог<br>своего оборудования</h1><p>Введите модель или артикул. Посмотрите варианты замены, характеристики и подходящие комплектующие.</p></section>
+<section class="search-area" aria-label="Поиск оборудования">
+<form class="search-card" id="searchForm" role="search"><svg class="search-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><input id="query" type="search" autocomplete="off" aria-label="Модель или артикул" placeholder="Например, YM43E1S-100" maxlength="180" aria-describedby="searchHint"><button class="clear" type="button" id="clearBtn" aria-label="Очистить поиск" hidden>×</button><button class="primary search-btn" type="submit" id="findBtn" disabled>Найти</button></form>
+<p class="hint" id="searchHint">Можно ввести часть модели. Регистр и пробелы не важны.</p><div class="filters" id="filters" role="group" aria-label="Категория оборудования"><button class="chip active" type="button" data-category="" aria-pressed="true">Всё оборудование</button></div><p class="hint max-slot"></p></section>
+<div class="load-state" id="loadState" role="status"><span class="spinner" aria-hidden="true"></span>Загружаем каталог…</div>
+<section class="welcome" id="welcome" hidden><div class="welcome-icon" aria-hidden="true">⌕</div><h2>Начните с модели на шильдике</h2><p>Подойдут и старые обозначения, если для них есть соответствие в каталоге.</p><div class="examples"><span>Например:</span><button type="button" data-example="YM43E1S-100">YM43E1S-100</button><button type="button" data-example="YH200A">YH200A</button><button type="button" data-example="120H0023">120H0023</button></div><span class="catalog-count" id="catalogCount"></span></section>
+<section class="results" id="results" hidden aria-label="Результаты поиска"><div class="results-head"><h2>Результаты поиска</h2><span class="count" id="count" role="status"></span></div><div class="cards" id="cards"></div><button class="secondary more" id="moreBtn" type="button" hidden>Показать ещё</button></section>
+<section class="empty-state" id="empty" hidden><h2>В каталоге не нашлось совпадений</h2><p>Проверьте модель или попробуйте другую часть кода.</p><p class="contact-slot"></p></section>
+</main>
+<footer><div class="shell foot"><strong>Аналоги запчастей</strong><span>Соответствия и характеристики — по данным каталога. Условия подбора указаны в карточках.</span><span class="contact-slot"></span></div></footer>
+<div id="toast" class="toast" role="status" hidden></div>
+</body></html>
