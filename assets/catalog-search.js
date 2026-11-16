@@ -8,6 +8,12 @@ export function manufacturerName(value){
   // These source headers include a compressor type, not a separate manufacturer.
   return {'COPELAND SCROLL':'Copeland','DANFOSS SCROLL':'Danfoss'}[name.toUpperCase()]||name;
 }
+export function evidenceDirection(row,reverse){
+  if(['Подходящая комплектующая','Артикул аналога'].includes(row.kind))return 'directional';
+  if(['Сопоставление по таблице','Примерный аналог по источнику'].includes(row.kind))return 'same_source_table';
+  return reverse?'reverse_reference':'direct';
+}
+export function reverseReferenceOnly(match){return match.rows.length>0&&match.rows.every(r=>r._evidenceDirection==='reverse_reference');}
 export function enrichBrands(records) {
   const brands=new Map();
   for(const row of records) for(const side of ['a','b']) {

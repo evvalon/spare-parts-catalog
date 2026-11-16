@@ -84,7 +84,7 @@ export async function readCatalog(buffer) {
   if (!header || header.number !== 1 || COLUMNS.some(([, title], i) => tidy(header.values[i]) !== title)) {
     throw Error('Изменены заголовки таблицы. В первой строке должны быть 12 столбцов согласованного каталога в прежнем порядке.');
   }
-  const records = [], ids = new Map(), pairs = new Map();
+  const records = [], rowNumbers=[],ids = new Map(), pairs = new Map();
   for (const {number, values} of rows) {
     const record = Object.fromEntries(COLUMNS.map(([key], i) => [key, text(values[i])]));
     for (const key of ['id','category','a','kind',...(tidy(record.kind)===NO_ANALOG_KIND?[]:['b'])]) {
@@ -99,9 +99,10 @@ export async function readCatalog(buffer) {
     if (pairs.has(pair)) warnings.push({row:number, message:`Соответствие также есть в строке ${pairs.get(pair)}. Если источники или условия разные, обе строки можно сохранить.`});
     else pairs.set(pair, number);
     records.push(record);
+    rowNumbers.push(number);
   }
   if (!records.length) errors.push({row:1, message:'В каталоге нет данных.'});
-  return {records, errors, warnings};
+  return {records, errors, warnings,rowNumbers};
 }
 
 export function compareCatalogs(oldRecords, newRecords) {
