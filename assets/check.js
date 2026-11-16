@@ -1,4 +1,4 @@
-import {readCatalog, compareCatalogs, escape as e, tidy} from './catalog.js?v=20261116-2';
+import {readCatalog, compareCatalogs, escape as e, tidy} from './catalog.js?v=20261116-3';
 const $ = s => document.querySelector(s);
 const inputOld=$('#oldFile'), inputNew=$('#newFile'), output=$('#checkResults');
 let report = null, busy=false, generation=0;

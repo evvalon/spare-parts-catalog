@@ -1,6 +1,6 @@
-import {readCatalog, CATALOG_FILE, NO_ANALOG_KIND,tidy, normalize, escape as e} from './catalog.js?v=20261116-2';
-import {settings} from './settings.js?v=20261116-2';
-import {enrichBrands,buildArticleContexts,evidenceDirection,reverseReferenceOnly,manufacturerName} from './catalog-search.js?v=20261116-2';
+import {readCatalog, CATALOG_FILE, NO_ANALOG_KIND,tidy, normalize, escape as e} from './catalog.js?v=20261116-3';
+import {settings} from './settings.js?v=20261116-3';
+import {enrichBrands,buildArticleContexts,evidenceDirection,reverseReferenceOnly,manufacturerName} from './catalog-search.js?v=20261116-3';
 const $ = s => document.querySelector(s);
 const query = $('#query'), cards = $('#cards');
 const state = {records:[], catalogById:new Map(),brandSources:new Map(),sourceRows:new Map(),knownRows:[],searchRows:[], articleContexts:new Map(),category:'', found:[], visible:12, showSimilar:false,loaded:false};
