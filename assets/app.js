@@ -8,6 +8,7 @@ query.value = (initial.get('q') || '').slice(0, 180);
 state.category = initial.get('category') || '';
 const copyIcon = '<svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="6" y="6" width="10" height="11" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M12 6V3H3v10h3" stroke="currentColor" stroke-width="1.5"/></svg>';
 const copyValues = new Map();
+const orders = new Map();
 let timer, toastTimer;
 function showToast(message) { clearTimeout(toastTimer); $('#toast').textContent = message; $('#toast').hidden = false; toastTimer = setTimeout(() => $('#toast').hidden = true, 3500); }
 function modelKey(brand, model) { return JSON.stringify([tidy(brand),tidy(model)]); }
@@ -83,20 +84,38 @@ function detailsHTML(match) {
   const blocks = [...unique.values()].map((s,i) => `${unique.size>1?`<div class="kicker">Сведения ${i+1}</div>`:''}${[['Исходная модель',s.fromSpecs],['Результат подбора',s.toSpecs],['Условия и сведения каталога',s.note]].filter(([,v])=>tidy(v)).map(([title,value])=>`<div class="spec-block"><strong>${title}</strong><p>${e(value)}</p></div>`).join('')}`).join('');
   return blocks ? `<details class="details"><summary>Характеристики и условия</summary>${blocks}</details>` : '';
 }
-function matchHTML(match, token) {
+function voltage(value) {
+  const values=[...String(value).matchAll(/(?:^|[^\d])(220|230|380|400)\s*[ВBV](?=$|[^A-Za-zА-Яа-я])/gi)].map(m=>m[1]+' В');
+  return [...new Set(values)].map(v=>`<span class="voltage">${e(v)}</span>`).join('');
+}
+function matchHTML(match, token, group, number) {
   copyValues.set(token, tidy(match.to));
-  return `<div class="match"><div class="match-label ${match.kind.startsWith('Примерный')?'caution':''}">${label(match.kind,match.reverse)}</div><div class="match-line"><div><div class="match-model">${e(match.to)}</div>${tidy(match.toBrand)?`<div class="brand-name">${e(match.toBrand)}</div>`:''}</div><button type="button" class="copy" data-copy="${token}" aria-label="Скопировать ${e(tidy(match.to))}">${copyIcon}<span>Копировать</span></button></div>${detailsHTML(match)}</div>`;
+  orders.set(token,{from:tidy(group.from),fromBrand:tidy(group.fromBrand),to:tidy(match.to),toBrand:tidy(match.toBrand),kind:match.kind,reverse:match.reverse});
+  const known=match.rows.find(r=>tidy(r._reverse?r.a_specs:r.b_specs));
+  const specs=known?(known._reverse?known.a_specs:known.b_specs):'';
+  const shortSpecs=tidy(specs).length>155?tidy(specs).slice(0,152)+'…':tidy(specs);
+  const typeLabel=label(match.kind,match.reverse);
+  const analog=!['Подходящая комплектующая','Артикул аналога'].includes(match.kind);
+  const title=analog?`${match.kind.startsWith('Примерный')?'Примерный аналог':'Аналог'} ${number}`:`${typeLabel} ${number}`;
+  return `<div class="match"><div class="match-label ${match.kind.startsWith('Примерный')?'caution':''}">${e(title)}</div><div class="option-title"><h4 class="match-model">${e(match.to)}</h4>${voltage(match.to)}</div>${tidy(match.toBrand)?`<div class="brand-name">${e(match.toBrand)}</div>`:''}${shortSpecs?`<p class="quick-specs">${e(shortSpecs)}</p>`:''}<div class="match-actions"><button type="button" class="primary option-order" data-order="${token}">${analog?'Заказать этот аналог':'Уточнить заказ'}</button><button type="button" class="copy" data-copy="${token}" aria-label="Скопировать ${e(tidy(match.to))}">${copyIcon}<span>Копировать</span></button></div>${detailsHTML(match)}</div>`;
 }
 function cardHTML(group, index) {
   const matches = [...group.matches.values()], fromToken = `${index}-from`;
   copyValues.set(fromToken, tidy(group.from));
-  return `<article class="card"><div class="card-top"><div class="kicker">Найденная модель / артикул</div><div class="match-line"><div><h3 class="model">${e(group.from)}</h3>${tidy(group.fromBrand)?`<div class="brand-name">${e(group.fromBrand)}</div>`:''}</div><button class="copy" type="button" data-copy="${fromToken}" aria-label="Скопировать ${e(tidy(group.from))}">${copyIcon}</button></div><span class="card-category">${e(group.category)}</span></div>${matches.map((m,i)=>`<div class="match-wrap" ${i>=8?'hidden data-extra-match':''}>${matchHTML(m,`${index}-${i}`)}</div>`).join('')}${matches.length>8?`<button type="button" class="card-more" data-expand>Ещё вариантов: ${matches.length-8}</button>`:''}</article>`;
+  const sections=new Map();
+  matches.forEach((match,i)=>{
+    const title=match.kind==='Подходящая комплектующая'?(match.reverse?'Подходит к оборудованию':'Подходящие комплектующие'):match.kind==='Артикул аналога'?(match.reverse?'Модели для этого артикула':'Артикулы аналогов'):'Найденные аналоги';
+    if(!sections.has(title))sections.set(title,[]);
+    sections.get(title).push({match,token:`${index}-${i}`});
+  });
+  return `<article class="card ${group.score===0?'exact-card':'similar-card'}"><div class="card-top"><div class="found-context"><span class="kicker">${group.score===0?'Вы искали':'Похожее обозначение'}</span><span class="match-status">${group.score===0?'Точное совпадение':'Совпадение по части запроса'}</span></div><div class="match-line"><div><h3 class="model">${e(group.from)}</h3><div class="source-meta">${tidy(group.fromBrand)?`<span>${e(group.fromBrand)}</span>`:''}<span>${e(group.category)}</span>${voltage(group.from)}</div></div><button class="copy" type="button" data-copy="${fromToken}" aria-label="Скопировать ${e(tidy(group.from))}">${copyIcon}</button></div></div>${[...sections].map(([title,items])=>`<section class="options-section"><div class="options-heading"><h3>${title}</h3><span>${items.length}</span></div><div class="options-grid">${items.map(({match,token},i)=>matchHTML(match,token,group,i+1)).join('')}</div></section>`).join('')}</article>`;
 }
 function render() {
   copyValues.clear();
+  orders.clear();
   cards.innerHTML = state.found.slice(0,state.visible).map(cardHTML).join('');
   $('#moreBtn').hidden = state.visible >= state.found.length;
-  $('#count').textContent = `Найдено: ${state.found.length} · показано: ${Math.min(state.visible,state.found.length)}`;
+  $('#count').textContent = `Моделей / артикулов: ${state.found.length}${state.visible<state.found.length?' · показано: '+state.visible:''}`;
 }
 function search() {
   clearTimeout(timer);
@@ -159,6 +178,8 @@ $('#filters').addEventListener('click',event=>{
 document.querySelectorAll('[data-example]').forEach(b=>b.addEventListener('click',()=>{query.value=b.dataset.example;search();query.focus();}));
 $('#moreBtn').addEventListener('click',()=>{state.visible+=12;render();});
 cards.addEventListener('click',async event=>{
+  const order=event.target.closest('[data-order]');
+  if(order){openOrder(orders.get(order.dataset.order));return;}
   const expand = event.target.closest('[data-expand]');
   if (expand) { expand.closest('.card').querySelectorAll('[data-extra-match]').forEach(n=>n.hidden=false);expand.hidden=true;return; }
   const button = event.target.closest('[data-copy]');
@@ -168,6 +189,28 @@ cards.addEventListener('click',async event=>{
   try { await navigator.clipboard.writeText(value);showToast('Скопировано: '+value); }
   catch { showToast('Не удалось скопировать. Выделите модель и скопируйте вручную.'); }
 });
+function openOrder(item) {
+  let message='Здравствуйте! Хочу заказать запчасть. Помогите, пожалуйста, с подбором.';
+  $('#orderTitle').textContent='Заказать запчасть';
+  if(item){
+    const original=[item.fromBrand,item.from].filter(Boolean).join(' · '), result=[item.toBrand,item.to].filter(Boolean).join(' · ');
+    const relation=label(item.kind,item.reverse);
+    message=`Здравствуйте! Ищу запчасть: ${original}.\n${relation}: ${result}.\nПодскажите, пожалуйста, наличие, стоимость и условия заказа.`;
+    $('#orderTitle').textContent=item.kind==='Подходящая комплектующая'?'Уточнить комплектующую':item.kind==='Артикул аналога'?'Заказать по артикулу':'Заказать аналог';
+  }
+  $('#orderMessage').value=message;
+  $('#orderCopyStatus').textContent='Сообщение можно дополнить перед копированием.';
+  $('#copyOrder').textContent='1. Скопировать сообщение';
+  $('#orderDialog').showModal();
+}
+$('#headerOrder').addEventListener('click',()=>openOrder());
+$('#closeOrder').addEventListener('click',()=>$('#orderDialog').close());
+$('#copyOrder').addEventListener('click',async()=>{
+  try{await navigator.clipboard.writeText($('#orderMessage').value);$('#copyOrder').textContent='✓ Сообщение скопировано';$('#orderCopyStatus').textContent='Откройте MAX и вставьте сообщение в переписку.';}
+  catch{$('#orderMessage').focus();$('#orderMessage').select();$('#orderCopyStatus').textContent='Скопируйте выделенный текст вручную, затем откройте MAX.';}
+});
+$('#orderDialog').addEventListener('click',event=>{if(event.target===$('#orderDialog')){const r=$('#orderDialog').getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)$('#orderDialog').close();}});
+$('#openMax').href=settings.maxUrl;
 document.querySelectorAll('.contact-slot').forEach(slot=>{
   slot.classList.add('contacts');
   if (/^https:\/\//.test(settings.maxUrl)) { const a=document.createElement('a');a.href=settings.maxUrl;a.textContent='Написать в MAX';slot.append(a); }

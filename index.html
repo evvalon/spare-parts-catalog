@@ -8,9 +8,9 @@
 <script defer src="./assets/vendor/jszip.min.js"></script><script type="module" src="./assets/app.js"></script>
 </head>
 <body>
-<header class="shell topbar"><a class="brand" href="./" aria-label="Аналоги запчастей, главная"><span class="mark" aria-hidden="true">↗</span><span>Аналоги запчастей<small>Каталог оборудования</small></span></a><span class="top-note">Поиск по модели и артикулу</span></header>
+<header class="shell topbar"><a class="brand" href="./" aria-label="Аналоги запчастей, главная"><span class="mark" aria-hidden="true">↗</span><span>Аналоги запчастей<small>Каталог оборудования</small></span></a><button type="button" class="primary header-order" id="headerOrder">Заказать в MAX <span aria-hidden="true">↗</span></button></header>
 <main class="shell">
-<section class="intro"><div class="eyebrow"><span class="dot"></span>Подбор по каталогу</div><h1>Найдите аналог<br>своего оборудования</h1><p>Введите модель или артикул. Посмотрите варианты замены, характеристики и подходящие комплектующие.</p></section>
+<section class="intro"><div class="eyebrow"><span class="dot"></span>Компрессоры · вентиляторы · ТЭНы</div><h1>Ваша модель.<br> Подходящие аналоги.</h1><p>Найдите замену по модели или артикулу<br>и уточните заказ у специалиста в MAX.</p></section>
 <section class="search-area" aria-label="Поиск оборудования">
 <form class="search-card" id="searchForm" role="search"><svg class="search-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><input id="query" type="search" autocomplete="off" aria-label="Модель или артикул" placeholder="Например, YM43E1S-100" maxlength="180" aria-describedby="searchHint"><button class="clear" type="button" id="clearBtn" aria-label="Очистить поиск" hidden>×</button><button class="primary search-btn" type="submit" id="findBtn" disabled>Найти</button></form>
 <p class="hint" id="searchHint">Можно ввести часть модели. Регистр и пробелы не важны.</p><div class="filters" id="filters" role="group" aria-label="Категория оборудования"><button class="chip active" type="button" data-category="" aria-pressed="true">Всё оборудование</button></div><p class="hint max-slot"></p></section>
@@ -21,4 +21,6 @@
 </main>
 <footer><div class="shell foot"><strong>Аналоги запчастей</strong><span>Соответствия и характеристики — по данным каталога. Условия подбора указаны в карточках.</span><span class="contact-slot"></span></div></footer>
 <div id="toast" class="toast" role="status" hidden></div>
+<dialog id="orderDialog" class="order-dialog" aria-labelledby="orderTitle"><div class="dialog-head"><div><span class="eyebrow">Связь со специалистом</span><h2 id="orderTitle">Заказать запчасть</h2></div><button type="button" class="dialog-close" id="closeOrder" aria-label="Закрыть">×</button></div><p class="order-description">Наличие и стоимость уточняются в переписке. Скопируйте сообщение и отправьте его специалисту в MAX.</p><label for="orderMessage">Сообщение для заказа</label><textarea id="orderMessage" rows="5"></textarea><div class="order-steps"><button type="button" class="secondary" id="copyOrder">1. Скопировать сообщение</button><a class="primary max-button" id="openMax" target="_blank" rel="noopener noreferrer">2. Открыть MAX ↗</a></div><p class="small-note" id="orderCopyStatus" role="status">Сообщение можно дополнить перед копированием.</p></dialog>
 </body></html>
+
