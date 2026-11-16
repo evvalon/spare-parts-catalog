@@ -19,7 +19,7 @@ async function read(file) {
   if (file.size>25*1024*1024) throw Error('Файл больше 25 МБ.');
   return readCatalog(await file.arrayBuffer());
 }
-const rowName = r => `${tidy(r.a)} → ${tidy(r.b)}`;
+const rowName = r => tidy(r.b)?`${tidy(r.a)} → ${tidy(r.b)}`:`${tidy(r.a)} — аналог не указан`;
 function itemHTML(item, type) {
   if (type==='changed') return `<div class="review-row"><strong>${e(rowName(item.after))}</strong><span class="small-note">Номер записи: ${e(item.id)}</span>${item.fields.map(f=>`<div class="change-field"><b>${e(f.title)}</b><div class="before">Было: ${e(f.before)||'—'}</div><div class="after">Стало: ${e(f.after)||'—'}</div></div>`).join('')}</div>`;
   return `<div class="review-row"><strong>${e(rowName(item))}</strong><span>${e(item.category)} · ${e(item.kind)}</span><div class="small-note">Номер записи: ${e(item.id)}</div></div>`;

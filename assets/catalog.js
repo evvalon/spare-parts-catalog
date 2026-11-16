@@ -6,7 +6,8 @@ export const COLUMNS = [
   ['b_specs', 'Характеристики результата'], ['note', 'Условия и сведения источника'],
   ['source', 'Источник: файл, лист, строка'], ['status', 'Статус записи']
 ];
-export const KINDS = ['Сопоставление по таблице', 'Аналог по источнику',
+export const NO_ANALOG_KIND = 'Модель без соответствия';
+export const KINDS = [NO_ANALOG_KIND,'Сопоставление по таблице', 'Аналог по источнику',
   'Текстовое сопоставление по источнику', 'Примерный аналог по источнику',
   'Артикул аналога', 'Подходящая комплектующая'];
 export const CATALOG_FILE = 'Каталог аналогов.xlsx';
@@ -86,13 +87,14 @@ export async function readCatalog(buffer) {
   const records = [], ids = new Map(), pairs = new Map();
   for (const {number, values} of rows) {
     const record = Object.fromEntries(COLUMNS.map(([key], i) => [key, text(values[i])]));
-    for (const key of ['id','category','a','kind','b']) {
+    for (const key of ['id','category','a','kind',...(tidy(record.kind)===NO_ANALOG_KIND?[]:['b'])]) {
       if (!tidy(record[key])) errors.push({row:number, message:`Не заполнено поле «${COLUMNS.find(c => c[0] === key)[1]}».`});
     }
     const recordId = tidy(record.id);
     if (recordId && ids.has(recordId)) errors.push({row:number, message:`Номер записи «${recordId}» повторяется (строка ${ids.get(recordId)}).`});
     ids.set(recordId, number);
     if (!KINDS.includes(tidy(record.kind))) errors.push({row:number, message:'Неизвестный тип записи. Используйте тип из существующих строк.'});
+    if(tidy(record.kind)===NO_ANALOG_KIND&&tidy(record.b))errors.push({row:number,message:'У записи «Модель без соответствия» заполнен аналог. Укажите подходящий тип связи.'});
     const pair = JSON.stringify(['category','a_brand','a','kind','b_brand','b'].map(k => tidy(record[k])));
     if (pairs.has(pair)) warnings.push({row:number, message:`Соответствие также есть в строке ${pairs.get(pair)}. Если источники или условия разные, обе строки можно сохранить.`});
     else pairs.set(pair, number);

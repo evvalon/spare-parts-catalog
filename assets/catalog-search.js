@@ -3,10 +3,15 @@ import {tidy} from './catalog.js';
 // Metadata matching is intentionally stricter than fuzzy search: no guessed
 // prefixes, suffixes, cross-script letters or manufacturer aliases.
 const metadataKey = (category, model) => JSON.stringify([tidy(category).toUpperCase(),tidy(model).toUpperCase()]);
+export function manufacturerName(value){
+  const name=tidy(value);
+  // These source headers include a compressor type, not a separate manufacturer.
+  return {'COPELAND SCROLL':'Copeland','DANFOSS SCROLL':'Danfoss'}[name.toUpperCase()]||name;
+}
 export function enrichBrands(records) {
   const brands=new Map();
   for(const row of records) for(const side of ['a','b']) {
-    const model=tidy(row[side]),brand=tidy(row[side+'_brand']);
+    const model=tidy(row[side]),brand=manufacturerName(row[side+'_brand']);
     if(!model||!brand)continue;
     const key=metadataKey(row.category,model);
     if(!brands.has(key))brands.set(key,new Map());
@@ -18,7 +23,7 @@ export function enrichBrands(records) {
     // Original source and anchor are retained before metadata is enriched.
     next._sourceKey=tidy(row.source)?JSON.stringify([row.category,row.source,tidy(row.a),tidy(row.a_brand)]):null;
     for(const side of ['a','b']){
-      if(tidy(row[side+'_brand']))continue;
+      if(tidy(row[side+'_brand'])){next[side+'_brand']=manufacturerName(row[side+'_brand']);continue;}
       const known=brands.get(metadataKey(row.category,row[side]));
       if(known?.size===1){
         const match=[...known.values()][0];

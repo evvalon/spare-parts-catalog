@@ -1,9 +1,9 @@
-import {readCatalog, CATALOG_FILE, tidy, normalize, escape as e} from './catalog.js';
+import {readCatalog, CATALOG_FILE, NO_ANALOG_KIND,tidy, normalize, escape as e} from './catalog.js';
 import {settings} from './settings.js';
 import {enrichBrands,buildArticleContexts} from './catalog-search.js';
 const $ = s => document.querySelector(s);
 const query = $('#query'), cards = $('#cards');
-const state = {records:[], searchRows:[], articleContexts:new Map(),category:'', found:[], visible:12, loaded:false};
+const state = {records:[], knownRows:[],searchRows:[], articleContexts:new Map(),category:'', found:[], visible:12, showSimilar:false,loaded:false};
 const initial = new URLSearchParams(location.search);
 query.value = (initial.get('q') || '').slice(0, 180);
 state.category = initial.get('category') || '';
@@ -12,7 +12,7 @@ const copyValues = new Map();
 const orders = new Map();
 let timer, toastTimer;
 function showToast(message) { clearTimeout(toastTimer); $('#toast').textContent = message; $('#toast').hidden = false; toastTimer = setTimeout(() => $('#toast').hidden = true, 3500); }
-function modelKey(brand, model) { return JSON.stringify([tidy(brand),tidy(model)]); }
+function modelKey(brand, model) { return JSON.stringify([tidy(brand).toUpperCase(),tidy(model)]); }
 function score(model, brand, q) {
   const v = normalize(model);
   if (v === q) return 0;
@@ -26,7 +26,14 @@ function label(kind, reverse) {
   if (kind === 'Артикул аналога') return reverse ? 'Исходная модель подбора' : 'Артикул аналога';
   return kind === 'Примерный аналог по источнику' ? 'Примерный аналог' : 'Аналог по каталогу';
 }
-function cleanNote(note) {
+function cleanNote(note, row) {
+  // Hide a repeated, fully structured list of codes, but retain actual conditions.
+  const sourceText=tidy(note).replace(/^A:\s*/,''), prefix=tidy(row?.a)+' Аналоги:';
+  if(row?.source && sourceText.startsWith(prefix)){
+    const codes=sourceText.slice(prefix.length).split(',').map(tidy);
+    const recorded=new Set(state.records.filter(r=>r.source===row.source&&r.a===row.a).flatMap(r=>[tidy(r.a),tidy(r.b)]));
+    if(codes.length&&codes.every(code=>recorded.has(code)))return '';
+  }
   if (/^Краткое обозначение компрессора сохранено/.test(note)) return 'Подбор по краткому обозначению компрессора.';
   const parts = note.replace(/(^|[;\n])\s*[A-Z]{1,3}:\s*/g, '$1').split(/[;\n]/).map(tidy).filter(Boolean);
   return [...new Set(parts)].join('; ');
@@ -34,6 +41,7 @@ function cleanNote(note) {
 function prepareSearchRows(records) {
   const out=[], tables=new Map();
   for (const row of records) {
+    if(row.kind===NO_ANALOG_KIND)continue;
     if (!['Сопоставление по таблице','Примерный аналог по источнику'].includes(tidy(row.kind))) {out.push(row);continue;}
     // A table row was stored as pairs sharing the same first model. Reassemble
     // ONLY that original row; keep different source rows and anchors separate.
@@ -69,7 +77,8 @@ function collect(q) {
     if (!groups.has(key)) groups.set(key, {from, fromBrand, category:row.category, score:Math.min(aScore,bScore), matches:new Map(),contexts:new Map()});
     const group = groups.get(key);
     const directional=['Подходящая комплектующая','Артикул аналога'].includes(tidy(row.kind));
-    const matchKey = JSON.stringify([modelKey(toBrand,to),tidy(row.kind),directional?reverse:false]);
+    const relation=directional?row.kind:row.kind==='Примерный аналог по источнику'?'approximate':'analog';
+    const matchKey = JSON.stringify([modelKey(toBrand,to),relation,directional?reverse:false]);
     if (!group.matches.has(matchKey)) group.matches.set(matchKey, {to,toBrand,kind:row.kind,reverse,rows:[]});
     group.matches.get(matchKey).rows.push({...row,_reverse:reverse});
     if(row.kind==='Артикул аналога'&&reverse){
@@ -79,13 +88,24 @@ function collect(q) {
       }
     }
   }
+  const hasAnalogResults=groups.size>0;
+  for(const row of state.knownRows){
+    if(state.category&&tidy(row.category)!==state.category)continue;
+    const rank=score(row.a,row.a_brand,q);if(rank===9)continue;
+    if(rank!==0&&hasAnalogResults)continue;
+    // An empty cell in one source does not override an analog in another source.
+    const alreadyKnown=[...groups.values()].some(g=>tidy(g.category)===tidy(row.category)&&normalize(g.from)===normalize(row.a)&&(!tidy(g.fromBrand)||!tidy(row.a_brand)||tidy(g.fromBrand).toUpperCase()===tidy(row.a_brand).toUpperCase()));
+    if(alreadyKnown)continue;
+    const key=JSON.stringify([tidy(row.category),modelKey(row.a_brand,row.a)]);
+    groups.set(key,{from:row.a,fromBrand:row.a_brand,category:row.category,score:rank,matches:new Map(),contexts:new Map(),noAnalog:true});
+  }
   return [...groups.values()].sort((a,b) => a.score-b.score || a.from.localeCompare(b.from,'ru'));
 }
 function detailsHTML(match) {
   const unique = new Map();
   for (const r of match.rows) {
     const fromSpecs = r._reverse ? r.b_specs : r.a_specs, toSpecs = r._reverse ? r.a_specs : r.b_specs;
-    const note = cleanNote(r.note), key = JSON.stringify([fromSpecs,toSpecs,note]);
+    const note = cleanNote(r.note,r), key = JSON.stringify([fromSpecs,toSpecs,note]);
     if (!unique.has(key)) unique.set(key, {fromSpecs,toSpecs,note});
   }
   const blocks = [...unique.values()].map((s,i) => `${unique.size>1?`<div class="kicker">Сведения ${i+1}</div>`:''}${[['Исходная модель',s.fromSpecs],['Результат подбора',s.toSpecs],['Условия и сведения каталога',s.note]].filter(([,v])=>tidy(v)).map(([title,value])=>`<div class="spec-block"><strong>${title}</strong><p>${e(value)}</p></div>`).join('')}`).join('');
@@ -98,16 +118,21 @@ function voltage(value) {
 function matchHTML(match, token, group, number) {
   copyValues.set(token, tidy(match.to));
   orders.set(token,{from:tidy(group.from),fromBrand:tidy(group.fromBrand),to:tidy(match.to),toBrand:tidy(match.toBrand),kind:match.kind,reverse:match.reverse,contextFor:match.contextFor});
-  const known=match.rows.find(r=>tidy(r._reverse?r.a_specs:r.b_specs));
-  const specs=known?(known._reverse?known.a_specs:known.b_specs):'';
-  const shortSpecs=tidy(specs).length>155?tidy(specs).slice(0,152)+'…':tidy(specs);
   const typeLabel=label(match.kind,match.reverse);
   const analog=!match.contextFor&&!['Подходящая комплектующая','Артикул аналога'].includes(match.kind);
   const title=match.contextFor?`Модель из этого подбора ${number}`:analog?`${match.kind.startsWith('Примерный')?'Примерный аналог':'Аналог'} ${number}`:`${typeLabel} ${number}`;
-  return `<div class="match ${match.contextFor?'context-match':''}"><div class="match-label ${match.kind.startsWith('Примерный')?'caution':''}">${e(title)}</div><div class="option-title"><h4 class="match-model">${e(match.to)}</h4>${voltage(match.to)}</div><div class="brand-name ${tidy(match.toBrand)?'':'unknown-brand'}">${tidy(match.toBrand)?e(match.toBrand):'Производитель не указан'}</div>${match.contextFor?`<p class="context-relation">Аналог для ${e(match.contextFor)}${match.kind.startsWith('Примерный')?' · примерный по источнику':''}</p>`:''}${shortSpecs?`<p class="quick-specs">${e(shortSpecs)}</p>`:''}<div class="match-actions"><button type="button" class="primary option-order" data-order="${token}">${match.contextFor?'Уточнить совместимость':analog?'Заказать этот аналог':'Уточнить заказ'}</button><button type="button" class="copy" data-copy="${token}" aria-label="Скопировать ${e(tidy(match.to))}">${copyIcon}<span>Копировать</span></button></div>${detailsHTML(match)}</div>`;
+  return `<div class="match ${match.contextFor?'context-match':''}"><div class="result-main"><div class="match-label ${match.kind.startsWith('Примерный')?'caution':''}">${e(title)}</div><div class="result-identity"><span class="brand-name ${tidy(match.toBrand)?'':'unknown-brand'}">${tidy(match.toBrand)?e(match.toBrand):'Производитель не указан'}</span><h4 class="match-model">${e(match.to)}</h4>${voltage(match.to)}</div>${match.contextFor?`<span class="context-relation">Для ${e(match.contextFor)}${match.kind.startsWith('Примерный')?' · примерный по источнику':''}</span>`:''}</div><div class="match-actions"><button type="button" class="primary option-order" data-order="${token}">${match.contextFor?'Уточнить':analog?'Заказать':'Уточнить заказ'}</button><button type="button" class="copy" data-copy="${token}" aria-label="Скопировать ${e(tidy(match.to))}">${copyIcon}<span>Копировать</span></button></div>${detailsHTML(match)}</div>`;
 }
 function cardHTML(group, index) {
-  const matches = [...group.matches.values()], fromToken = `${index}-from`;
+  if(group.noAnalog){
+    const token=`${index}-known`;copyValues.set(token,tidy(group.from));
+    orders.set(token,{from:tidy(group.from),fromBrand:tidy(group.fromBrand),kind:NO_ANALOG_KIND,to:'',toBrand:''});
+    return `<article class="card known-model-card ${group.score===0?'exact-card':'similar-card'}"><div class="card-top"><span class="kicker">${group.score===0?'Модель найдена':'Похожее обозначение'}</span><div class="match-line"><div><h3 class="model">${e(group.from)}</h3><div class="source-meta">${tidy(group.fromBrand)?`<span>${e(group.fromBrand)}</span>`:''}<span>${e(group.category)}</span>${voltage(group.from)}</div></div><button class="copy" type="button" data-copy="${token}" aria-label="Скопировать ${e(tidy(group.from))}">${copyIcon}</button></div></div><div class="options-section no-analog-state"><h3>Аналог в каталоге не указан</h3><p>Уточните подбор у специалиста — он поможет проверить возможную замену.</p><button type="button" class="primary" data-order="${token}">Уточнить подбор в MAX</button></div></article>`;
+  }
+  const matches = [...group.matches.values()].sort((a,b)=>{
+    const firstA=a.rows.some(r=>r.status==='По первоначальному прайсу'),firstB=b.rows.some(r=>r.status==='По первоначальному прайсу');
+    return Number(firstB)-Number(firstA)||Number(!tidy(a.toBrand))-Number(!tidy(b.toBrand))||a.toBrand.localeCompare(b.toBrand,'ru')||a.to.localeCompare(b.to,'ru');
+  }), fromToken = `${index}-from`;
   copyValues.set(fromToken, tidy(group.from));
   const sections=new Map();
   matches.forEach((match,i)=>{
@@ -123,9 +148,13 @@ function cardHTML(group, index) {
 function render() {
   copyValues.clear();
   orders.clear();
-  cards.innerHTML = state.found.slice(0,state.visible).map(cardHTML).join('');
-  $('#moreBtn').hidden = state.visible >= state.found.length;
-  $('#count').textContent = `Моделей / артикулов: ${state.found.length}${state.visible<state.found.length?' · показано: '+state.visible:''}`;
+  const exact=state.found.filter(g=>g.score===0),similar=state.found.length-exact.length;
+  const shown=exact.length&&!state.showSimilar?exact:state.found;
+  cards.innerHTML = shown.slice(0,state.visible).map(cardHTML).join('');
+  $('#moreBtn').hidden = state.visible >= shown.length;
+  $('#similarBtn').hidden = !exact.length||!similar;
+  $('#similarBtn').textContent=state.showSimilar?'Скрыть похожие обозначения':`Показать похожие обозначения (${similar})`;
+  $('#count').textContent = `Моделей / артикулов: ${shown.length}${state.visible<shown.length?' · показано: '+state.visible:''}`;
 }
 function search() {
   clearTimeout(timer);
@@ -134,6 +163,7 @@ function search() {
   $('#clearBtn').hidden = !query.value;
   if (!state.loaded) return;
   state.visible = 12;
+  state.showSimilar=false;
   $('#welcome').hidden = !!q;
   $('#results').hidden = $('#empty').hidden = true;
   if (q) {
@@ -160,12 +190,13 @@ async function load() {
     if (result.errors.length) throw Error('В таблице каталога есть ошибки.');
     state.records = result.records;
     const enriched=enrichBrands(state.records);
+    state.knownRows=enriched.filter(r=>r.kind===NO_ANALOG_KIND);
     state.articleContexts=buildArticleContexts(enriched);
     state.searchRows = prepareSearchRows(enriched);
     const categories = [...new Set(state.records.map(r=>tidy(r.category)))].sort((a,b)=>a.localeCompare(b,'ru'));
     if (!categories.includes(state.category)) state.category = '';
     $('#filters').innerHTML = [['','Всё оборудование'],...categories.map(c=>[c,c])].map(([value,title])=>`<button type="button" class="chip ${value===state.category?'active':''}" data-category="${e(value)}" aria-pressed="${value===state.category}">${e(title)}</button>`).join('');
-    $('#catalogCount').textContent = `${state.records.length.toLocaleString('ru-RU')} записей соответствий в каталоге`;
+    $('#catalogCount').textContent = `${state.records.length.toLocaleString('ru-RU')} записей в каталоге`;
     state.loaded = true;
     $('#findBtn').disabled = false;
     $('#loadState').hidden = true;
@@ -189,6 +220,7 @@ $('#filters').addEventListener('click',event=>{
 });
 document.querySelectorAll('[data-example]').forEach(b=>b.addEventListener('click',()=>{query.value=b.dataset.example;search();query.focus();}));
 $('#moreBtn').addEventListener('click',()=>{state.visible+=12;render();});
+$('#similarBtn').addEventListener('click',()=>{state.showSimilar=!state.showSimilar;state.visible=12;render();});
 cards.addEventListener('click',async event=>{
   const order=event.target.closest('[data-order]');
   if(order){openOrder(orders.get(order.dataset.order));return;}
@@ -211,6 +243,7 @@ function openOrder(item) {
     if(item.contextFor)message=`Здравствуйте! Ищу по артикулу: ${original}.\nВ том же подборе для ${item.contextFor} указана модель: ${result}.\nПодтвердите, пожалуйста, совместимость с моим оборудованием, наличие и стоимость.`;
     $('#orderTitle').textContent=item.kind==='Подходящая комплектующая'?'Уточнить комплектующую':item.kind==='Артикул аналога'?'Заказать по артикулу':'Заказать аналог';
     if(item.contextFor)$('#orderTitle').textContent='Уточнить совместимость';
+    if(item.kind===NO_ANALOG_KIND){message=`Здравствуйте! Помогите, пожалуйста, подобрать аналог для ${original}.\nМодель найдена в каталоге, но замена для неё не указана.`;$('#orderTitle').textContent='Уточнить подбор';}
   }
   $('#orderMessage').value=message;
   $('#orderCopyStatus').textContent='Сообщение можно дополнить перед копированием.';
