@@ -33,11 +33,28 @@ function columnNumber(address) {
   return [...m[1]].reduce((n, c) => n * 26 + c.charCodeAt(0) - 64, 0) - 1;
 }
 
+// Explicit dependency readiness also covers delayed/failed vendor loading.
+let zipReady;
+async function ensureZip() {
+  if (globalThis.JSZip) return globalThis.JSZip;
+  if (!zipReady) zipReady = new Promise((resolve,reject) => {
+    const script=document.createElement('script');
+    const timer=setTimeout(()=>finish(Error('Не загрузился модуль чтения Excel. Проверьте соединение и нажмите «Повторить».')),15000);
+    function finish(error){clearTimeout(timer);script.onload=script.onerror=null;if(error){zipReady=null;reject(error);}else resolve(globalThis.JSZip);}
+    script.src=new URL('./assets/vendor/jszip.min.js?v=20261116-2',document.baseURI).href;
+    script.onload=()=>finish(globalThis.JSZip?null:Error('Модуль чтения Excel недоступен. Нажмите «Повторить».'));
+    script.onerror=()=>finish(Error('Не удалось скачать модуль чтения Excel. Проверьте соединение и нажмите «Повторить».'));
+    document.head.append(script);
+  });
+  return zipReady;
+}
+
 // Reads text, shared strings and cached scalar values, never runs Excel formulas.
 export async function readCatalog(buffer) {
   if (buffer.byteLength > 25 * 1024 * 1024) throw Error('Файл больше 25 МБ. Разделите каталог или удалите лишние изображения.');
+  const zipLibrary=await ensureZip();
   let zip;
-  try { zip = await globalThis.JSZip.loadAsync(buffer); }
+  try { zip = await zipLibrary.loadAsync(buffer); }
   catch { throw Error('Не удалось открыть Excel. Нужен обычный файл .xlsx без пароля.'); }
   let expandedBytes = 0;
   async function entry(path, required = true) {

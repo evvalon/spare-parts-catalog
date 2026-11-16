@@ -1,6 +1,6 @@
-import {readCatalog, CATALOG_FILE, NO_ANALOG_KIND,tidy, normalize, escape as e} from './catalog.js';
-import {settings} from './settings.js';
-import {enrichBrands,buildArticleContexts,evidenceDirection,reverseReferenceOnly,manufacturerName} from './catalog-search.js';
+import {readCatalog, CATALOG_FILE, NO_ANALOG_KIND,tidy, normalize, escape as e} from './catalog.js?v=20261116-2';
+import {settings} from './settings.js?v=20261116-2';
+import {enrichBrands,buildArticleContexts,evidenceDirection,reverseReferenceOnly,manufacturerName} from './catalog-search.js?v=20261116-2';
 const $ = s => document.querySelector(s);
 const query = $('#query'), cards = $('#cards');
 const state = {records:[], catalogById:new Map(),brandSources:new Map(),sourceRows:new Map(),knownRows:[],searchRows:[], articleContexts:new Map(),category:'', found:[], visible:12, showSimilar:false,loaded:false};
@@ -34,8 +34,8 @@ function cleanNote(note, row) {
     const recorded=new Set(state.records.filter(r=>r.source===row.source&&r.a===row.a).flatMap(r=>[tidy(r.a),tidy(r.b)]));
     if(codes.length&&codes.every(code=>recorded.has(code)))return '';
   }
-  if (/^Краткое обозначение компрессора сохранено/.test(note)) return 'Подбор по краткому обозначению компрессора.';
-  const parts = note.replace(/(^|[;\n])\s*[A-Z]{1,3}:\s*/g, '$1').split(/[;\n]/).map(tidy).filter(Boolean);
+  if (/^(?:Краткое обозначение компрессора сохранено|Соответствие из первоначального каталога|Подтверждение заказчика|В первоначальном каталоге и прайсе)/.test(tidy(note))) return '';
+  const parts = note.replace(/(^|[;\n])\s*[A-Z]{1,3}:\s*/g, '$1').split(/[;\n]/).map(tidy).filter(v=>v && !/^(?:Нет аналога|Соответствие из первоначального каталога.*|Подтверждение заказчика.*)$/i.test(v));
   return [...new Set(parts)].join('; ');
 }
 function prepareSearchRows(records) {
@@ -113,25 +113,9 @@ function detailsHTML(match) {
     const note = cleanNote(r.note,r), key = JSON.stringify([fromSpecs,toSpecs,note]);
     if (!unique.has(key)) unique.set(key, {fromSpecs,toSpecs,note});
   }
-  const blocks = [...unique.values()].map((s,i) => `${unique.size>1?`<div class="kicker">Сведения ${i+1}</div>`:''}${[['Исходная модель',s.fromSpecs],['Результат подбора',s.toSpecs],['Условия и сведения каталога',s.note]].filter(([,v])=>tidy(v)).map(([title,value])=>`<div class="spec-block"><strong>${title}</strong><p>${e(value)}</p></div>`).join('')}`).join('');
-  const sources=new Map();
-  for(const row of match.rows){
-    const key=row.source||'Источник не указан';
-    if(!sources.has(key))sources.set(key,new Set());
-    for(const id of row._catalogIds||[row.id]){const n=state.sourceRows.get(id);if(n)sources.get(key).add(n);}
-  }
-  let provenance=[...sources].map(([source,numbers])=>`<div class="source-evidence"><strong>Источник по каталогу</strong><p>${e(source)}</p>${numbers.size?`<small>Строки рабочего Excel: ${[...numbers].sort((a,b)=>a-b).join(', ')}</small>`:''}</div>`).join('');
-  if(tidy(match.toBrand)){
-    const originals=match.rows.flatMap(r=>(r._catalogIds||[r.id]).map(id=>state.catalogById.get(id))).filter(Boolean);
-    const explicit=originals.some(r=>['a','b'].some(side=>tidy(r[side]).toUpperCase()===tidy(match.to).toUpperCase()&&manufacturerName(r[side+'_brand']).toUpperCase()===tidy(match.toBrand).toUpperCase()));
-    if(!explicit){
-      const key=JSON.stringify([tidy(match.rows[0].category).toUpperCase(),tidy(match.to).toUpperCase(),tidy(match.toBrand).toUpperCase()]);
-      const origin=state.brandSources.get(key);
-      if(origin)provenance+=`<div class="source-evidence manufacturer-evidence"><strong>Источник сведений о производителе</strong><p>${e(origin.source||'Источник не указан')}</p><small>Строка рабочего Excel: ${origin.row}</small></div>`;
-    }
-  }
-  const basis=reverseReferenceOnly(match)?'В исходнике искомая модель указана как аналог этой модели. Обратная замена отдельно не подтверждена.':match.rows.some(r=>r._evidenceDirection==='same_source_table')?'Модели сопоставлены в одной строке таблицы аналогов. Учитывайте характеристики и условия источника.':'';
-  return `<details class="details"><summary>Источник и характеристики</summary>${basis?`<p class="basis-explanation">${basis}</p>`:''}${blocks}${provenance}</details>`;
+  const blocks = [...unique.values()].map((s,i) => `${unique.size>1?`<div class="kicker">Сведения ${i+1}</div>`:''}${[['Исходная модель',s.fromSpecs],['Результат подбора',s.toSpecs],['Условия подбора',s.note]].filter(([,v])=>tidy(v)).map(([title,value])=>`<div class="spec-block"><strong>${title}</strong><p>${e(value)}</p></div>`).join('')}`).join('');
+  if(!blocks)return '';
+  return `<details class="details"><summary>Характеристики и условия</summary>${blocks}</details>`;
 }
 function voltage(value) {
   const values=[...String(value).matchAll(/(?:^|[^\d])(220|230|380|400)\s*[ВBV](?=$|[^A-Za-zА-Яа-я])/gi)].map(m=>m[1]+' В');
@@ -150,7 +134,7 @@ function cardHTML(group, index) {
   if(group.noAnalog){
     const token=`${index}-known`;copyValues.set(token,tidy(group.from));
     orders.set(token,{from:tidy(group.from),fromBrand:tidy(group.fromBrand),kind:NO_ANALOG_KIND,to:'',toBrand:''});
-    return `<article class="card known-model-card ${group.score===0?'exact-card':'similar-card'}"><div class="card-top"><span class="kicker">${group.score===0?'Модель найдена':'Похожее обозначение'}</span><div class="match-line"><div><h3 class="model">${e(group.from)}</h3><div class="source-meta">${tidy(group.fromBrand)?`<span>${e(group.fromBrand)}</span>`:''}<span>${e(group.category)}</span>${voltage(group.from)}</div></div><button class="copy" type="button" data-copy="${token}" aria-label="Скопировать ${e(tidy(group.from))}">${copyIcon}</button></div></div><div class="options-section no-analog-state"><h3>Аналог в каталоге не указан</h3><p>Уточните подбор у специалиста — он поможет проверить возможную замену.</p><button type="button" class="primary" data-order="${token}">Уточнить подбор в MAX</button>${detailsHTML({to:group.from,toBrand:group.fromBrand,rows:[{...group.knownRecord,_reverse:false}]})}</div></article>`;
+    return `<article class="card known-model-card ${group.score===0?'exact-card':'similar-card'}"><div class="card-top"><span class="kicker">${group.score===0?'Модель найдена':'Похожее обозначение'}</span><div class="match-line"><div><h3 class="model">${e(group.from)}</h3><div class="source-meta">${tidy(group.fromBrand)?`<span>${e(group.fromBrand)}</span>`:''}<span>${e(group.category)}</span>${voltage(group.from)}</div></div><button class="copy" type="button" data-copy="${token}" aria-label="Скопировать ${e(tidy(group.from))}">${copyIcon}</button></div></div><div class="options-section no-analog-state"><h3>Аналог в каталоге не указан</h3><p>Уточните подбор у специалиста — он поможет проверить возможную замену.</p><button type="button" class="primary" data-order="${token}">Уточнить подбор</button>${detailsHTML({to:group.from,toBrand:group.fromBrand,rows:[{...group.knownRecord,_reverse:false}]})}</div></article>`;
   }
   const matches = [...group.matches.values()].sort((a,b)=>{
     const firstA=a.rows.some(r=>r.status==='По первоначальному прайсу'),firstB=b.rows.some(r=>r.status==='По первоначальному прайсу');
@@ -199,6 +183,19 @@ function search() {
   if (state.category) params.set('category',state.category);
   history.replaceState(null,'',location.pathname+(params.size?'?'+params:''));
 }
+async function fetchCatalog() {
+  for(let attempt=0;attempt<2;attempt++) {
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),20000);
+    try {
+      const response=await fetch(new URL(CATALOG_FILE,location.href),{cache:'no-store',signal:controller.signal});
+      // Read the body within the same timeout, not just the HTTP headers.
+      if(!response.ok){if(response.status>=500&&attempt===0)continue;return response;}
+      const buffer=await response.arrayBuffer();
+      return {ok:true,arrayBuffer:async()=>buffer};
+    }catch(error){if(attempt===1)throw Error('Не удалось скачать файл каталога. Проверьте интернет-соединение и нажмите «Повторить».');}
+    finally{clearTimeout(timer);}
+  }
+}
 async function load() {
   state.loaded = false;
   $('#findBtn').disabled = true;
@@ -207,8 +204,8 @@ async function load() {
   $('#loadState').innerHTML = '<span class="spinner" aria-hidden="true"></span>Загружаем каталог…';
   $('#welcome').hidden = $('#results').hidden = $('#empty').hidden = true;
   try {
-    const response = await fetch(new URL(CATALOG_FILE,location.href), {cache:'no-store'});
-    if (!response.ok) throw Error('Файл каталога недоступен.');
+    const response = await fetchCatalog();
+    if (!response.ok) throw Error('Файл каталога недоступен (HTTP '+response.status+'). Попробуйте ещё раз чуть позже.');
     const result = await readCatalog(await response.arrayBuffer());
     if (result.errors.length) throw Error('В таблице каталога есть ошибки.');
     state.records = result.records;
@@ -233,7 +230,7 @@ async function load() {
   } catch (error) {
     console.error('Catalog load failed:',error);
     $('#loadState').className = 'load-state load-error';
-    $('#loadState').innerHTML = '<strong>Не удалось загрузить каталог</strong><p>Попробуйте ещё раз чуть позже.</p><button type="button" class="secondary" id="retryBtn">Повторить</button>';
+    $('#loadState').innerHTML = '<strong>Не удалось загрузить каталог</strong><p>'+e(error.message || 'Проверьте соединение и попробуйте ещё раз.')+'</p><button type="button" class="secondary" id="retryBtn">Повторить</button>';
     $('#retryBtn').addEventListener('click',load);
   }
 }
@@ -283,19 +280,21 @@ function openOrder(item) {
 $('#headerOrder').addEventListener('click',()=>openOrder());
 $('#closeOrder').addEventListener('click',()=>$('#orderDialog').close());
 $('#copyOrder').addEventListener('click',async()=>{
-  try{await navigator.clipboard.writeText($('#orderMessage').value);$('#copyOrder').textContent='✓ Сообщение скопировано';$('#orderCopyStatus').textContent='Откройте MAX и вставьте сообщение в переписку.';}
-  catch{$('#orderMessage').focus();$('#orderMessage').select();$('#orderCopyStatus').textContent='Скопируйте выделенный текст вручную, затем откройте MAX.';}
+  try{await navigator.clipboard.writeText($('#orderMessage').value);$('#copyOrder').textContent='✓ Сообщение скопировано';$('#orderCopyStatus').textContent='Откройте удобный мессенджер и вставьте сообщение в переписку.';}
+  catch{$('#orderMessage').focus();$('#orderMessage').select();$('#orderCopyStatus').textContent='Скопируйте выделенный текст вручную, затем выберите мессенджер.';}
 });
 $('#orderDialog').addEventListener('click',event=>{if(event.target===$('#orderDialog')){const r=$('#orderDialog').getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)$('#orderDialog').close();}});
-$('#openMax').href=settings.maxUrl;
+const messengers=[{id:'max',label:'MAX',url:settings.maxUrl},{id:'telegram',label:'Telegram',url:settings.telegramUrl},{id:'whatsapp',label:'WhatsApp',url:settings.whatsappUrl}].filter(m=>/^https:\/\//.test(m.url||''));
+function messengerLink(m,label=m.label){const a=document.createElement('a');a.href=m.url;a.textContent=label;a.target='_blank';a.rel='noopener noreferrer';a.dataset.channel=m.id;return a;}
+for(const messenger of messengers){const link=messengerLink(messenger);link.className='messenger-link';link.id=messenger.id==='max'?'openMax':'open'+messenger.id;$('#messengerOptions')?.append(link);}
 document.querySelectorAll('.contact-slot').forEach(slot=>{
   slot.classList.add('contacts');
-  if (/^https:\/\//.test(settings.maxUrl)) { const a=document.createElement('a');a.href=settings.maxUrl;a.textContent='Написать в MAX';slot.append(a); }
+  messengers.forEach(m=>slot.append(messengerLink(m,'Написать в '+m.label)));
   settings.phones.forEach(phone=>{ const a=document.createElement('a');a.href='tel:'+phone.number;a.textContent=phone.label;slot.append(a); });
 });
-if (/^https:\/\//.test(settings.maxUrl)) document.querySelectorAll('.max-slot').forEach(slot=>{
+if(messengers.length) document.querySelectorAll('.max-slot').forEach(slot=>{
   slot.append('Нужна помощь с подбором? ');
-  const a=document.createElement('a');a.href=settings.maxUrl;a.textContent='Написать в MAX';slot.append(a);
+  const links=document.createElement('span');links.className='quick-messengers';messengers.forEach(m=>links.append(messengerLink(m)));slot.append(links);
 });
 load();
 
