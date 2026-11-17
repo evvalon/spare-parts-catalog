@@ -44,7 +44,7 @@ async function ensureZip() {
     const script=document.createElement('script');
     const timer=setTimeout(()=>finish(Error('Не загрузился модуль чтения Excel. Проверьте соединение и нажмите «Повторить».')),15000);
     function finish(error){clearTimeout(timer);script.onload=script.onerror=null;if(error){zipReady=null;reject(error);}else resolve(globalThis.JSZip);}
-    script.src=new URL('./assets/vendor/jszip.min.js?v=20261116-3',document.baseURI).href;
+    script.src=new URL('./assets/vendor/jszip.min.js?v=20261117-check1',document.baseURI).href;
     script.onload=()=>finish(globalThis.JSZip?null:Error('Модуль чтения Excel недоступен. Нажмите «Повторить».'));
     script.onerror=()=>finish(Error('Не удалось скачать модуль чтения Excel. Проверьте соединение и нажмите «Повторить».'));
     document.head.append(script);
@@ -84,13 +84,21 @@ export async function readCatalog(buffer) {
   const allRows = nodes(sheetDoc, 'row');
   if (allRows.length > 50001) throw Error('В каталоге больше 50 000 строк. Для этого объёма требуется отдельная настройка.');
   const errors = [], warnings = [];
-  const rows = [];
+  const rows = [], physicalRows=new Set();
   for (const row of allRows) {
-    const values = [], number = Number(row.getAttribute('r'));
+    const rowAddress=row.getAttribute('r')||'', number=Number(rowAddress);
+    if(!/^[1-9]\d*$/.test(rowAddress)||!Number.isSafeInteger(number)||number>1048576)throw Error('В Excel обнаружен некорректный номер строки. Пересохраните файл в Excel.');
+    if(physicalRows.has(number))throw Error('В Excel повторяется строка '+number+'. Пересохраните файл в Excel.');
+    physicalRows.add(number);
+    const values=[],cellAddresses=new Set();
     for (const cell of nodes(row, 'c')) {
-      const index = columnNumber(cell.getAttribute('r') || '');
+      const address=cell.getAttribute('r')||'',index=columnNumber(address);
+      if(Number(address.replace(/^[A-Z]+/,''))!==number)throw Error('Адрес ячейки '+address+' не соответствует строке '+number+'. Пересохраните файл в Excel.');
+      if(cellAddresses.has(address))throw Error('В Excel повторяется ячейка '+address+'. Пересохраните файл в Excel.');
+      cellAddresses.add(address);
       const type = cell.getAttribute('t');
       const raw = nodes(cell, 'v')[0]?.textContent ?? '';
+      if(type==='s'&&(!/^\d+$/.test(raw.trim())||!Number.isSafeInteger(Number(raw))||Number(raw)>=strings.length))throw Error('Повреждён текст ячейки '+address+'. Пересохраните файл в Excel.');
       let value = type === 's' ? strings[Number(raw)] : type === 'inlineStr' ? stringValue(cell) : raw;
       value = text(value);
       if (nodes(cell, 'f').length) errors.push({row:number, message:`${cell.getAttribute('r')}: замените формулу её значением.`});
