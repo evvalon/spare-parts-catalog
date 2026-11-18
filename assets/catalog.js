@@ -44,7 +44,7 @@ async function ensureZip() {
     const script=document.createElement('script');
     const timer=setTimeout(()=>finish(Error('Не загрузился модуль чтения Excel. Проверьте соединение и нажмите «Повторить».')),15000);
     function finish(error){clearTimeout(timer);script.onload=script.onerror=null;if(error){zipReady=null;reject(error);}else resolve(globalThis.JSZip);}
-    script.src=new URL('./assets/vendor/jszip.min.js?v=20261118-review1',document.baseURI).href;
+    script.src=new URL('./assets/vendor/jszip.min.js?v=20261118-owner1',document.baseURI).href;
     script.onload=()=>finish(globalThis.JSZip?null:Error('Модуль чтения Excel недоступен. Нажмите «Повторить».'));
     script.onerror=()=>finish(Error('Не удалось скачать модуль чтения Excel. Проверьте соединение и нажмите «Повторить».'));
     document.head.append(script);
@@ -154,7 +154,7 @@ export function compareCatalogs(oldRecords, newRecords, options={}) {
       else added.push({...next,_row:nextItem.row});
     }
     else {
-      const fields = COLUMNS.filter(([key]) => text(prev[key]) !== text(next[key])).map(([key, title]) => ({key, title, before:prev[key], after:next[key]}));
+      const fields = COLUMNS.filter(([key]) => tidy(prev[key]) !== tidy(next[key])).map(([key, title]) => ({key, title, before:prev[key], after:next[key]}));
       if (fields.length) changed.push({id, before:prev, after:next, fields,beforeRow:prevItem.row,afterRow:nextItem.row});
       else unchanged++;
     }

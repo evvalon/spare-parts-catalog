@@ -1,4 +1,4 @@
-import {readCatalog, compareCatalogs, COLUMNS, escape as e, tidy} from './catalog.js?v=20261118-review1';
+import {readCatalog, compareCatalogs, COLUMNS, escape as e, tidy} from './catalog.js?v=20261118-owner1';
 const $ = s => document.querySelector(s);
 const inputOld=$('#oldFile'), inputNew=$('#newFile'), output=$('#checkResults');
 let report = null, busy=false, generation=0;
@@ -20,10 +20,9 @@ async function read(file) {
   return readCatalog(await file.arrayBuffer());
 }
 const rowName = r => tidy(r.b)?`${tidy(r.a)||'(модель не заполнена)'} → ${tidy(r.b)}`:`${tidy(r.a)||'(модель не заполнена)'} — аналог не указан`;
-const onlySpacing = item => item.fields.every(f=>tidy(f.before)===tidy(f.after));
 function itemHTML(item, type) {
   if(type==='unmatched')return `<div class="review-row"><strong>${item.side==='old'?'Прежний':'Новый'} файл · строка ${e(item.row)}</strong><div>${e(rowName(item.record))}</div><div class="small-note">Номер записи: ${e(item.id)||'не заполнен'}</div><p>${e(item.reason)}</p></div>`;
-  if (type==='changed'||type==='spacing') return `<div class="review-row"><strong>${e(rowName(item.after))}</strong><span class="small-note">Новый файл: строка ${e(item.afterRow)} · прежний: ${e(item.beforeRow)} · номер записи: ${e(item.id)}</span>${item.fields.map(f=>`<div class="change-field"><b>${String.fromCharCode(65+COLUMNS.findIndex(c=>c[0]===f.key))}${e(item.afterRow)} · ${e(f.title)}</b><div class="before">Было: ${e(f.before)||'(пусто)'}</div><div class="after">Стало: ${e(f.after)||'(пусто)'}</div>${tidy(f.before)===tidy(f.after)?'<small>Изменились только пробелы или переносы строк.</small>':''}</div>`).join('')}</div>`;
+  if (type==='changed') return `<div class="review-row"><strong>${e(rowName(item.after))}</strong><span class="small-note">Новый файл: строка ${e(item.afterRow)} · прежний: ${e(item.beforeRow)} · номер записи: ${e(item.id)}</span>${item.fields.map(f=>`<div class="change-field"><b>${String.fromCharCode(65+COLUMNS.findIndex(c=>c[0]===f.key))}${e(item.afterRow)} · ${e(f.title)}</b><div class="before">Было: ${e(f.before)||'(пусто)'}</div><div class="after">Стало: ${e(f.after)||'(пусто)'}</div>${tidy(f.before)===tidy(f.after)?'<small>Изменились только пробелы или переносы строк.</small>':''}</div>`).join('')}</div>`;
   return `<div class="review-row"><strong>${e(rowName(item))}</strong><span>${e(item.category)} · ${e(item.kind)}</span><div class="small-note">Строка ${e(item._row)} · номер записи: ${e(item.id)}</div></div>`;
 }
 function issueHTML(issue) { return `<li>Строка ${e(issue.row)}: ${e(issue.message)}</li>`; }
@@ -54,7 +53,7 @@ $('#checkBtn').addEventListener('click',async()=>{
       +(oldError?`<div class="check-message bad"><p>Прежний файл: ${e(oldError)}</p></div>`:'')
       +listGroup('Ошибки нового файла',next.errors,'newErrors',true)
       +listGroup('Ошибки прежнего файла',prev?.errors||[],'oldErrors',true)
-      +(comparison?`${comparison.complete?'':'<p class="small-note">Счётчики ниже относятся только к однозначно сопоставленным строкам. Спорные номера не считаются добавлением или удалением.</p>'}<div class="metrics"><div class="metric"><b>${comparison.added.length}</b>Добавлено</div><div class="metric"><b>${comparison.changed.length}</b>Изменено всего</div><div class="metric"><b>${comparison.removed.length}</b>Удалено</div><div class="metric"><b>${comparison.unchanged}</b>Без изменений</div></div>${comparison.changed.some(onlySpacing)?`<p class="small-note">Изменения значений: ${comparison.changed.filter(c=>!onlySpacing(c)).length} записей. Только пробелы или переносы строк: ${comparison.changed.filter(onlySpacing).length} — показаны отдельно ниже.</p>`:''}${listGroup('Добавлено',comparison.added,'added')}${listGroup('Изменено — значения полей',comparison.changed.filter(c=>!onlySpacing(c)),'changed')}${listGroup('Удалено',comparison.removed,'removed')}${listGroup('Не удалось однозначно сопоставить',comparison.unmatched,'unmatched')}${listGroup('Изменились только пробелы или переносы строк',comparison.changed.filter(onlySpacing),'spacing')}`:'')
+      +(comparison?`${comparison.complete?'':'<p class="small-note">Счётчики ниже относятся только к однозначно сопоставленным строкам. Спорные номера не считаются добавлением или удалением.</p>'}<div class="metrics"><div class="metric"><b>${comparison.added.length}</b>Добавлено</div><div class="metric"><b>${comparison.changed.length}</b>Изменено всего</div><div class="metric"><b>${comparison.removed.length}</b>Удалено</div><div class="metric"><b>${comparison.unchanged}</b>Без изменений</div></div>${listGroup('Добавлено',comparison.added,'added')}${listGroup('Изменено — значения полей',comparison.changed,'changed')}${listGroup('Удалено',comparison.removed,'removed')}${listGroup('Не удалось однозначно сопоставить',comparison.unmatched,'unmatched')}`:'')
       +listGroup('Справочно: одинаковые пары моделей в разных строках',next.warnings,'warnings',true);
     $('#downloadBtn').hidden=false;
     $('#progress').textContent='Готово';
@@ -65,7 +64,7 @@ $('#checkBtn').addEventListener('click',async()=>{
   } finally { busy=false;inputOld.disabled=inputNew.disabled=false;$('#checkBtn').disabled=!inputNew.files.length; }
 });
 function groupItems(type) {
-  return type==='newErrors'?report.next.errors:type==='oldErrors'?report.prev?.errors||[]:type==='warnings'?report.next.warnings:type==='changed'?report.comparison.changed.filter(c=>!onlySpacing(c)):type==='spacing'?report.comparison.changed.filter(onlySpacing):report.comparison?.[type]||[];
+  return type==='newErrors'?report.next.errors:type==='oldErrors'?report.prev?.errors||[]:type==='warnings'?report.next.warnings:report.comparison?.[type]||[];
 }
 output.addEventListener('click',event=>{
   const button=event.target.closest('[data-group]');
