@@ -1,4 +1,4 @@
-import {tidy} from './catalog.js?v=20261117-check1';
+import {tidy} from './catalog.js?v=20261118-review1';
 
 // Metadata matching is intentionally stricter than fuzzy search: no guessed
 // prefixes, suffixes, cross-script letters or manufacturer aliases.

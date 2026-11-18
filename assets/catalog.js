@@ -44,7 +44,7 @@ async function ensureZip() {
     const script=document.createElement('script');
     const timer=setTimeout(()=>finish(Error('Не загрузился модуль чтения Excel. Проверьте соединение и нажмите «Повторить».')),15000);
     function finish(error){clearTimeout(timer);script.onload=script.onerror=null;if(error){zipReady=null;reject(error);}else resolve(globalThis.JSZip);}
-    script.src=new URL('./assets/vendor/jszip.min.js?v=20261117-check1',document.baseURI).href;
+    script.src=new URL('./assets/vendor/jszip.min.js?v=20261118-review1',document.baseURI).href;
     script.onload=()=>finish(globalThis.JSZip?null:Error('Модуль чтения Excel недоступен. Нажмите «Повторить».'));
     script.onerror=()=>finish(Error('Не удалось скачать модуль чтения Excel. Проверьте соединение и нажмите «Повторить».'));
     document.head.append(script);
@@ -124,7 +124,7 @@ export async function readCatalog(buffer) {
     if (!KINDS.includes(tidy(record.kind))) errors.push({row:number, message:'Неизвестный тип записи. Используйте тип из существующих строк.'});
     if(tidy(record.kind)===NO_ANALOG_KIND&&tidy(record.b))errors.push({row:number,message:'У записи «Модель без соответствия» заполнен аналог. Укажите подходящий тип связи.'});
     const pair = JSON.stringify(['category','a_brand','a','kind','b_brand','b'].map(k => tidy(record[k])));
-    if (pairs.has(pair)) warnings.push({row:number, message:`Соответствие также есть в строке ${pairs.get(pair)}. Если источники или условия разные, обе строки можно сохранить.`});
+    if (pairs.has(pair)) warnings.push({row:number, pair, firstRow:pairs.get(pair), message:`Пара «${tidy(record.a)} → ${tidy(record.b)||'аналог не указан'}» также есть в строке ${pairs.get(pair)}. Разные источники или условия можно сохранить отдельными строками.`});
     else pairs.set(pair, number);
     records.push(record);
     rowNumbers.push(number);
@@ -133,18 +133,35 @@ export async function readCatalog(buffer) {
   return {records, errors, warnings,rowNumbers};
 }
 
-export function compareCatalogs(oldRecords, newRecords) {
-  const oldMap = new Map(oldRecords.map(r => [tidy(r.id), r]));
-  const newMap = new Map(newRecords.map(r => [tidy(r.id), r]));
+export function compareCatalogs(oldRecords, newRecords, options={}) {
+  // Invalid data fields can still be compared. Ambiguous identities cannot:
+  // exclude their ID on BOTH sides rather than silently overwriting a Map entry.
+  const index=(records,rows)=>{
+    const map=new Map();records.forEach((record,i)=>{const id=tidy(record.id);if(!map.has(id))map.set(id,[]);map.get(id).push({record,row:rows?.[i]??i+2});});return map;
+  };
+  const oldIndex=index(oldRecords,options.oldRowNumbers),newIndex=index(newRecords,options.newRowNumbers);
+  const blocked=new Set([...oldIndex,...newIndex].filter(([id,items])=>!id||items.length>1).map(([id])=>id));
+  const unmatched=[];
+  for(const [side,entries] of [['old',oldIndex],['new',newIndex]])for(const [id,items] of entries)if(blocked.has(id))for(const item of items)unmatched.push({...item,id,side,reason:id?'Номер повторяется в одной из версий. Нельзя однозначно выбрать соответствующую строку.':'Не заполнен номер записи. Нельзя сопоставить строку между версиями.'});
+  const oldMap=new Map([...oldIndex].filter(([id])=>!blocked.has(id)).map(([id,items])=>[id,items[0]]));
+  const newMap=new Map([...newIndex].filter(([id])=>!blocked.has(id)).map(([id,items])=>[id,items[0]]));
   const added = [], removed = [], changed = [];
-  for (const [id, next] of newMap) {
-    const prev = oldMap.get(id);
-    if (!prev) added.push(next);
+  let unchanged=0;
+  for (const [id, nextItem] of newMap) {
+    const next=nextItem.record,prevItem = oldMap.get(id),prev=prevItem?.record;
+    if (!prev) {
+      if(oldIndex.has(''))unmatched.push({...nextItem,id,side:'new',reason:'В прежнем файле есть строки без номера. Нельзя надёжно определить, добавлена ли эта запись или ей присвоили номер.'});
+      else added.push({...next,_row:nextItem.row});
+    }
     else {
       const fields = COLUMNS.filter(([key]) => text(prev[key]) !== text(next[key])).map(([key, title]) => ({key, title, before:prev[key], after:next[key]}));
-      if (fields.length) changed.push({id, before:prev, after:next, fields});
+      if (fields.length) changed.push({id, before:prev, after:next, fields,beforeRow:prevItem.row,afterRow:nextItem.row});
+      else unchanged++;
     }
   }
-  for (const [id, prev] of oldMap) if (!newMap.has(id)) removed.push(prev);
-  return {added, removed, changed, unchanged:newRecords.length - added.length - changed.length};
+  for (const [id, prev] of oldMap) if (!newMap.has(id)) {
+    if(newIndex.has(''))unmatched.push({...prev,id,side:'old',reason:'В новом файле есть строки без номера. Нельзя надёжно определить, удалена ли эта запись или у неё стёрли номер.'});
+    else removed.push({...prev.record,_row:prev.row});
+  }
+  return {added, removed, changed, unchanged,unmatched,complete:unmatched.length===0};
 }

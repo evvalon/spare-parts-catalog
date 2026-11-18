@@ -1,6 +1,6 @@
-import {readCatalog, CATALOG_FILE, NO_ANALOG_KIND,tidy, normalize, escape as e} from './catalog.js?v=20261117-check1';
-import {settings} from './settings.js?v=20261117-check1';
-import {enrichBrands,buildArticleContexts,evidenceDirection,reverseReferenceOnly,manufacturerName} from './catalog-search.js?v=20261117-check1';
+import {readCatalog, CATALOG_FILE, NO_ANALOG_KIND,tidy, normalize, escape as e} from './catalog.js?v=20261118-review1';
+import {settings} from './settings.js?v=20261118-review1';
+import {enrichBrands,buildArticleContexts,evidenceDirection,reverseReferenceOnly,manufacturerName} from './catalog-search.js?v=20261118-review1';
 const $ = s => document.querySelector(s);
 const query = $('#query'), cards = $('#cards');
 const state = {records:[], catalogById:new Map(),brandSources:new Map(),sourceRows:new Map(),knownRows:[],searchRows:[], articleContexts:new Map(),category:'', found:[], visible:12, showSimilar:false,loaded:false};
@@ -14,10 +14,11 @@ let timer, toastTimer;
 function showToast(message) { clearTimeout(toastTimer); $('#toast').textContent = message; $('#toast').hidden = false; toastTimer = setTimeout(() => $('#toast').hidden = true, 3500); }
 function modelKey(brand, model) { return JSON.stringify([tidy(brand).toUpperCase(),tidy(model)]); }
 function score(model, brand, q) {
-  const v = normalize(model);
-  if (v === q) return 0;
-  if (v.startsWith(q)) return 1;
-  if (v.includes(q)) return 2;
+  const raw=String(model),name=raw.replace(/^(?:компр\.\s*|компр\s+|компрессор\s+)/i,'');
+  const values=name===raw?[normalize(raw)]:[normalize(raw),normalize(name)];
+  if(values.some(v=>v===q))return 0;
+  if(values.some(v=>v.startsWith(q)))return 1;
+  if(values.some(v=>v.includes(q)))return 2;
   if (normalize(brand).includes(q)) return 3;
   return 9;
 }
@@ -35,7 +36,7 @@ function cleanNote(note, row) {
     if(codes.length&&codes.every(code=>recorded.has(code)))return '';
   }
   if (/^(?:Краткое обозначение компрессора сохранено|Соответствие из первоначального каталога|Подтверждение заказчика|В первоначальном каталоге и прайсе)/.test(tidy(note))) return '';
-  const parts = note.replace(/(^|[;\n])\s*[A-Z]{1,3}:\s*/g, '$1').split(/[;\n]/).map(tidy).filter(v=>v && !/^(?:Нет аналога|Соответствие из первоначального каталога.*|Подтверждение заказчика.*)$/i.test(v));
+  const parts = note.replace('Параметры строки исходной таблицы:', 'Присоединения в подборе:').replace(/(^|[;\n])\s*[A-Z]{1,3}:\s*/g, '$1').split(/[;\n]/).map(tidy).filter(v=>v && !/^(?:Нет аналога|Соответствие из первоначального каталога.*|Подтверждение заказчика.*)$/i.test(v));
   return [...new Set(parts)].join('; ');
 }
 function prepareSearchRows(records) {
@@ -88,8 +89,10 @@ function collect(q) {
     group.matches.get(matchKey).rows.push({...row,_reverse:reverse,_evidenceDirection:evidenceDirection(row,reverse)});
     if(row.kind==='Артикул аналога'&&reverse){
       for(const related of state.articleContexts.get(row.id)||[]){
-        const contextKey=JSON.stringify([related._sourceKey,related.b,related.b_brand,related.kind]);
-        if(!group.contexts.has(contextKey))group.contexts.set(contextKey,{to:related.b,toBrand:related.b_brand,kind:related.kind,reverse:false,rows:[{...related,_reverse:false}],contextFor:related.a,contextForBrand:related.a_brand});
+        const contextKey=JSON.stringify([related.a,related.a_brand,related.b,related.b_brand,related.kind]);
+        if(!group.contexts.has(contextKey))group.contexts.set(contextKey,{to:related.b,toBrand:related.b_brand,kind:related.kind,reverse:false,rows:[],contextFor:related.a,contextForBrand:related.a_brand});
+        const contextMatch=group.contexts.get(contextKey);
+        if(!contextMatch.rows.some(r=>r.id===related.id))contextMatch.rows.push({...related,_reverse:false});
       }
     }
   }
